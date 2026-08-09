@@ -192,6 +192,7 @@ class Lab(tk.Tk):
 
         self._build_ui()
         self.after(60, self.retrace)
+        self.after(1000, self._poll_system_theme)
 
     # ---------------------------------------------------------------- theme
 
@@ -206,9 +207,24 @@ class Lab(tk.Tk):
         for cls in ("TFrame", "TLabel", "TCheckbutton", "TLabelframe",
                     "TLabelframe.Label", "TRadiobutton"):
             s.configure(cls, background=BG, foreground=TXT)
-        s.map("TCheckbutton", foreground=[("!disabled", TXT)])
+        # No hover/active fill and no focus ring behind the checkbox labels.
+        s.configure("TCheckbutton", focuscolor=BG)
+        s.map("TCheckbutton",
+              foreground=[("!disabled", TXT)],
+              background=[("active", BG), ("selected", BG), ("focus", BG)],
+              indicatorbackground=[("selected", PANEL), ("!selected", PANEL),
+                                   ("active", PANEL)])
         s.configure("TButton", background=PANEL, foreground=TXT)
         s.map("TButton", background=[("active", BORDER)])
+        # Clip-iteration buttons: same base look as the Scene buttons, plus a
+        # selected variant filled with the accent colour.
+        s.configure("Iter.TButton", background=PANEL, foreground=TXT)
+        s.map("Iter.TButton", background=[("active", BORDER)],
+              foreground=[("active", TXT)])
+        s.configure("IterSel.TButton", background=HANDLE, foreground="#ffffff")
+        s.map("IterSel.TButton",
+              background=[("active", HANDLE), ("pressed", HANDLE)],
+              foreground=[("active", "#ffffff")])
         s.configure("TSpinbox", fieldbackground=PANEL, foreground=TXT,
                     background=PANEL, arrowcolor=TXT, bordercolor=BORDER)
         s.map("TSpinbox", fieldbackground=[("readonly", PANEL)],
@@ -283,7 +299,9 @@ class Lab(tk.Tk):
         left.columnconfigure(0, weight=1)
 
         ttk.Label(left, text="Scene  —  click to drop a circle, drag rim to resize, "
-                             "right-click to delete", style="Hdr.TLabel").grid(
+                             "right-click to delete, middle click to pan, "
+                             "scroll to zoom",
+                  style="Hdr.TLabel").grid(
             row=0, column=0, sticky="w", pady=(0, 3))
 
         self.canvas = tk.Canvas(left, bg=CANVAS_BG, highlightthickness=1,
@@ -315,30 +333,22 @@ class Lab(tk.Tk):
         # ---- plots ----
         mid = ttk.Frame(root)
         mid.grid(row=0, column=1, sticky="nsew", padx=(0, 6))
-        mid.rowconfigure(1, weight=1)
+        mid.rowconfigure(0, weight=1)
         mid.columnconfigure(0, weight=1)
-
-        ttk.Label(mid, text="Density along the ray", style="Hdr.TLabel").grid(
-            row=0, column=0, sticky="w", pady=(0, 3))
 
         self.fig = Figure(figsize=(6.0, 6.4), dpi=100, facecolor=BG)
         self.ax_full = self.fig.add_subplot(211)
         self.ax_iter = self.fig.add_subplot(212)
-        self.fig.subplots_adjust(left=0.11, right=0.98, top=0.93,
+        self.fig.subplots_adjust(left=0.11, right=0.98, top=0.95,
                                  bottom=0.08, hspace=0.34)
         self.plot = FigureCanvasTkAgg(self.fig, master=mid)
-        self.plot.get_tk_widget().grid(row=1, column=0, sticky="nsew")
+        self.plot.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
         # One button per clip iteration, filling the width. A slider was the
         # wrong control: a root takes 4-6 iterations, so its whole travel was a
         # few pixels; a segmented bar makes each step a real target.
-        step = ttk.Frame(mid)
-        step.grid(row=2, column=0, sticky="ew", pady=(8, 2))
-        step.columnconfigure(0, weight=1)
-        ttk.Label(step, text="Clip iteration  —  step through the root search",
-                  style="Hdr.TLabel").grid(row=0, column=0, sticky="w")
-        self.iter_bar = ttk.Frame(step)
-        self.iter_bar.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        self.iter_bar = ttk.Frame(mid)
+        self.iter_bar.grid(row=1, column=0, sticky="ew", pady=(1, 0))
         self._iter_buttons = []
         self.bind_all("<Left>", lambda e: self._step_iter(-1))
         self.bind_all("<Right>", lambda e: self._step_iter(+1))
@@ -550,7 +560,8 @@ class Lab(tk.Tk):
         after = self.s2w(e.x, e.y)
         self.view_cx += before[0] - after[0]
         self.view_cy += before[1] - after[1]
-        self.clear_render()
+        # Zoom only changes the view transform; the fan is world-space and
+        # stays valid, so keep it rather than clearing and redraw in place.
         self.redraw_scene()
 
     def on_preset(self, _e=None):
@@ -625,46 +636,37 @@ class Lab(tk.Tk):
             self._iter_n = n
 
             if n == 0:
-                lbl = tk.Label(bar, text="no root search on this ray  "
-                                         "(segment already resolved)",
-                               font=("Segoe UI", 9), fg=TXT_DIM, bg=BG, anchor="w")
+                lbl = ttk.Label(bar, text="no root search on this ray "
+                                          "(segment already resolved)",
+                                style="Mono.TLabel")
                 lbl.grid(row=0, column=0, sticky="w")
                 self._iter_buttons.append(lbl)
             else:
-                prev = tk.Button(bar, text="‹", font=("Segoe UI", 11), width=2,
-                                 relief="flat", bd=0,
-                                 command=lambda: self._step_iter(-1))
-                prev.grid(row=0, column=0, sticky="ns", padx=(0, 3))
+                # ttk.Button, same widget class and styles as the Scene buttons.
+                prev = ttk.Button(bar, text="‹", width=2, style="Iter.TButton",
+                                  takefocus=False,
+                                  command=lambda: self._step_iter(-1))
+                prev.grid(row=0, column=0, sticky="ns", padx=(0, 2))
                 self._iter_buttons.append(prev)
                 for k in range(n):
-                    b = tk.Button(bar, text=str(k + 1), font=("Segoe UI", 10),
-                                  relief="flat", bd=0, pady=6,
-                                  command=lambda kk=k: self.set_iter(kk))
+                    b = ttk.Button(bar, text=str(k + 1), style="Iter.TButton",
+                                   takefocus=False,
+                                   command=lambda kk=k: self.set_iter(kk))
                     b.grid(row=0, column=k + 1, sticky="nsew", padx=1)
                     bar.columnconfigure(k + 1, weight=1, uniform="iter")
                     self._iter_buttons.append(b)
-                nxt = tk.Button(bar, text="›", font=("Segoe UI", 11), width=2,
-                                relief="flat", bd=0,
-                                command=lambda: self._step_iter(+1))
-                nxt.grid(row=0, column=n + 1, sticky="ns", padx=(3, 0))
+                nxt = ttk.Button(bar, text="›", width=2, style="Iter.TButton",
+                                 takefocus=False,
+                                 command=lambda: self._step_iter(+1))
+                nxt.grid(row=0, column=n + 1, sticky="ns", padx=(2, 0))
                 self._iter_buttons.append(nxt)
 
-        # Recolour every time (selection, and after a theme switch).
+        # Selection is just a style swap; nothing to recolour by hand.
         if n == 0:
-            if self._iter_buttons:
-                self._iter_buttons[0].configure(fg=TXT_DIM, bg=BG)
             return
-        for arrow in (self._iter_buttons[0], self._iter_buttons[-1]):
-            arrow.configure(bg=PANEL, fg=TXT,
-                            activebackground=BORDER, activeforeground=TXT)
         for k in range(n):
-            b = self._iter_buttons[k + 1]     # skip the leading '‹'
-            on = (k == cur)
-            b.configure(bg=HANDLE if on else PANEL,
-                        fg="#ffffff" if on else TXT,
-                        activebackground=HANDLE if on else BORDER,
-                        activeforeground="#ffffff" if on else TXT,
-                        font=("Segoe UI", 10, "bold" if on else "normal"))
+            self._iter_buttons[k + 1].configure(     # skip the leading '‹'
+                style="IterSel.TButton" if k == cur else "Iter.TButton")
 
     # ---------------------------------------------------------------- trace
 
