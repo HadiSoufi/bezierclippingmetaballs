@@ -1,0 +1,11 @@
+### Bezier Clipped Metaballs
+
+Metaballs are a classic rendering technique, which, at it's most basic, is a series of circles or spheres that are rendered as blobs. While initially used to render electron fields in early visualizations of molecules, it's since found a wide range of niche applications, notably, video games.
+
+When my team and I were building [Soar: Pillars of Tasneem](https://store.steampowered.com/app/1513030/Soar_Pillars_of_Tasneem/), we needed an unsettling, out-of-place effect for corruption, and we settled on metaballs as the basis for that look. However, performance was a problem- due to our time and budget constraints, I was forced to use raymarched rendering, which is slow. Luckily, modern graphics cards are powerful, and, with a lot of help from some very smart people, I was able to optimize them reasonably well. Reasonably is the key word here, a lot of compromises were made, and I never felt satisfied with that implementation.
+
+During my research, I discovered Nishita Lab's seminal work on metaballs, dating back to the 90s. Miraculously, all of their work is publicly available, and I included the relevant snippet of their 1990 paper in this repository. Their approach is as follows: if we shoot a ray through a charged field, the density of that field is guaranteed to be a degree-6 polynomial. While it's been proven that there is no "hexatic equation" that can allow us to solve for some threshold value algebraically, we can easily generate Bezier points that perfectly represent that curve. As it turns out, you can iteratively approximate the X value of any given Y along a Bezier curve using a process called Bezier clipping, which can get good results in fewer than 4 iterations.
+
+Implementing Bezier clipped metaball rendering is trivial on the CPU, but quite challenging on the GPU, and even moreso within the limits of Unreal Engine. I wrote a python script to demonstrate my understanding, then used Opus 5 to generate a nice UI and perform validation tests. The results of that process will be used as a baseline for a shader fragment, written in HLSL, that will in turn be patched into _Soar_.
+
+To test the script yourself, download the repository and run the batch file. On non-windows systems, run the python command inside of that batchfile in your terminal of choice, it should work the same.
